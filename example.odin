@@ -17,7 +17,7 @@ main :: proc() {
         return
     }
 
-    hinter, hinter_ok := hinter_program_make(ttf_file, 20, 92, context.allocator)
+    hinter, hinter_ok := hinter_program_make(ttf_file, 20, 96, context.allocator)
     if ! hinter_ok {
         fmt.println("Failed to make hinter")
         return
