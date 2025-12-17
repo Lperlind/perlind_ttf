@@ -30,9 +30,9 @@ ttf_file, ok := ttf_from_data(my_file, context.allocator)
 id_a := ttf_file.codepoint_to_glyph_index_map['a'] // typically you would get this from a shaper
 unhinted_a, unhinted_a_ok := font_get_unhinted_glyph(ttf_file, id_a, context.allocator) // unhinted bezier curves for 'a'
 
-// create a hinter at 20 ppem with a dpi of 92. You probably want to cache the hinter as it must run a large program on creation.
+// create a hinter at 20 ppem with a dpi of 96. You probably want to cache the hinter as it must run a large program on creation.
 // you would not realise this if you were using freetype api
-hinter, hinter_ok := hinter_program_make(ttf_file, 20, 92, context.allocator)
+hinter, hinter_ok := hinter_program_make(ttf_file, 20, 96, context.allocator)
 hinted_a, hinted_a_ok := hinter_program_get_hinted_glyph(hinter, id_a, context.allocator) // hinted bezier curves for 'a'
 
 // cleanup
