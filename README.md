@@ -15,7 +15,7 @@ to integrate more with the odin core library.
 
 # Limitations
 Currently there are a few fonts that I do not hint correctly, ideally in the future I fix these up but most I have tested work correctly.
-Additionally there is no codepath for converting CFF cubic curves into bezier curves (future thing to do) nor do the CFF curves have a hinter.
+Additionally there is no codepath for converting CFF cubic curves into bezier curves (future thing to do) nor do the CFF curves have a hinter (another future thing to do).
 
 As previously stated the curves you get out are bezier. You can go digging into the internals if you need something else, I still retain the original
 structure of the curves (line segments, bezier, cubics), I just covert them to bezier right at the end.
