@@ -8,8 +8,8 @@ import "core:math/linalg"
 
 // NOTE(lucas): the highest precision graphics state vector in the hinter has
 // 14 bits of accuracy, so anything under 1 / 16384 can be considered as 0
-HINTER_EPS :: 1 / 16_384
-F_DOT_P_MIN :: 1 / 16
+HINTER_EPS :: 1.0 / 16_384.0
+F_DOT_P_MIN :: 1.0 / 16.0
 HINTER_DEBUG_ENABLED :: false
 HINTER_DEBUG_INSTRUCTIONS :: true
 HINTER_DEBUG_LOG :: true
@@ -1299,10 +1299,10 @@ hinter_program_ttf_norm_f32 :: #force_inline proc(v: [2]f32) -> [2]f32 {
     }
     if abs(n.x) < HINTER_EPS {
         n.x = 0
-        n.y = 1
+        n.y = math.sign(v.y)
     }
     if abs(n.y) < HINTER_EPS {
-        n.x = 1
+        n.x = math.sign(v.x)
         n.y = 0
     }
     return n
@@ -1343,7 +1343,7 @@ hinter_program_ttf_move_point_orig :: proc(ctx: ^Hinter_Program_Execution_Contex
     if ctx.gs.free_vector.y == 0 {
         move.y = 0
     }
-    hinter_program_ttf_add_zp(ctx, zone.cur, idx, move)
+    hinter_program_ttf_add_zp(ctx, zone.orig, idx, move)
 }
 
 hinter_program_ttf_move_point :: proc(ctx: ^Hinter_Program_Execution_Context, zone: ^Hinter_Program_Ttf_Zone, idx: u32, dist: f32, touch: bool) {
@@ -1591,7 +1591,7 @@ hinter_program_ttf_ins_sswci :: proc(ctx: ^Hinter_Program_Execution_Context) {
 
 hinter_program_ttf_ins_ssw :: proc(ctx: ^Hinter_Program_Execution_Context) {
     value := hinter_program_ttf_stack_pop(ctx, 1)[0]
-    ctx.gs.single_width_cutin = hinter_program_f26dot6_to_f32(value) * ctx.program.funits_to_pixels_scale
+    ctx.gs.single_width_value = hinter_program_f26dot6_to_f32(value) * ctx.program.funits_to_pixels_scale
 }
 
 hinter_program_ttf_ins_dup :: proc(ctx: ^Hinter_Program_Execution_Context) {
@@ -1644,7 +1644,7 @@ hinter_program_ttf_ins_alignpts :: proc(ctx: ^Hinter_Program_Execution_Context) 
     p2 := u32(points[0])
 
     v1 := hinter_program_ttf_get_zp(ctx, ctx.zp1.cur, p1)
-    v2 := hinter_program_ttf_get_zp(ctx, ctx.zp2.cur, p2)
+    v2 := hinter_program_ttf_get_zp(ctx, ctx.zp0.cur, p2)
 
     distance := hinter_program_ttf_project(ctx, v2 - v1) / 2
 
@@ -1889,11 +1889,11 @@ hinter_program_ttf_ins_shz :: proc(ctx: ^Hinter_Program_Execution_Context) {
 }
 
 hinter_program_ttf_is_twilight_zone :: proc(ctx: ^Hinter_Program_Execution_Context) -> bool {
-    return ctx.gs.gep0 == 0 && ctx.gs.gep1 == 0 && ctx.gs.gep2 == 0
+    return ctx.gs.gep0 == 0 || ctx.gs.gep1 == 0 || ctx.gs.gep2 == 0
 }
 
 hinter_program_ttf_ins_shpix :: proc(ctx: ^Hinter_Program_Execution_Context) {
-        amt := hinter_program_f2dot14_to_f32(i16(hinter_program_ttf_stack_pop(ctx, 1)[0]))
+    amt := hinter_program_f26dot6_to_f32(hinter_program_ttf_stack_pop(ctx, 1)[0])
     is_twilight_zone := hinter_program_ttf_is_twilight_zone(ctx)
 
     for _ in 0..<ctx.gs.loop {
@@ -1960,7 +1960,8 @@ hinter_program_ttf_ins_msirp :: proc(ctx: ^Hinter_Program_Execution_Context) {
         orig := hinter_program_ttf_get_zp(ctx, ctx.zp0.orig, ctx.gs.rp0)
         hinter_program_ttf_set_zp(ctx, ctx.zp1.orig, point, orig)
         hinter_program_ttf_move_point_orig(ctx, ctx.zp1, point, distance)
-        hinter_program_ttf_set_zp(ctx, ctx.zp1.cur, point, orig)
+        new := hinter_program_ttf_get_zp(ctx, ctx.zp1.orig, point)
+        hinter_program_ttf_set_zp(ctx, ctx.zp1.cur, point, new)
     }
 
     zp0_cur := hinter_program_ttf_get_zp(ctx, ctx.zp0.cur, ctx.gs.rp0)
@@ -2092,7 +2093,7 @@ hinter_program_ttf_ins_scfs :: proc(ctx: ^Hinter_Program_Execution_Context) {
     point_idx := u32(values[1])
 
     projection := hinter_program_ttf_project(ctx, hinter_program_ttf_get_zp(ctx, ctx.zp2.cur, point_idx))
-    hinter_program_ttf_move_point(ctx, ctx.zp2, point_idx, projection - k, true)
+    hinter_program_ttf_move_point(ctx, ctx.zp2, point_idx, k - projection, true)
     if ctx.gs.gep2 == 0 {
         twilight := hinter_program_ttf_get_zp(ctx, ctx.zp2.cur, point_idx)
         hinter_program_ttf_set_zp(ctx, ctx.zp2.orig_scaled, point_idx, twilight)
@@ -2329,7 +2330,7 @@ hinter_program_ttf_try_get_delta_value :: proc(ctx: ^Hinter_Program_Execution_Co
         return {}, false
     }
     num_steps := i32(exc & 0xF) - 8
-    if num_steps > 0 {
+    if num_steps >= 0 {
         num_steps += 1
     }
 
@@ -2355,7 +2356,7 @@ hinter_program_ttf_ins_deltap :: proc(ctx: ^Hinter_Program_Execution_Context) {
             a := ctx.iup_state != TTF_HINTER_TOUCH_XY
             b := len(ctx.glyph.compound_glyphs) > 0 && ctx.gs.free_vector.y != 0
             c := touch_state & TTF_HINTER_TOUCH_Y != 0
-            can_move := a && b || c
+            can_move := a && (b || c)
             if can_move {
                 hinter_program_ttf_move_point(ctx, ctx.zp0, point_index, delta, true)
             }
@@ -2660,13 +2661,22 @@ hinter_program_ttf_ins_mdrp :: proc(ctx: ^Hinter_Program_Execution_Context) {
     }
 
     dist_orig = hinter_program_ttf_apply_single_width_cut_in(ctx, dist_orig)    
+    unmodified_dist := dist_orig
     ins := u8(ctx.ins)
     if ins & 0x04 != 0 {
         dist_orig = hinter_program_ttf_round_according_to_state(ctx, dist_orig)
     }
 
     if ins & 0x08 != 0 {
-        dist_orig = hinter_program_ttf_apply_min_dist(ctx, dist_orig)
+        if unmodified_dist >= 0 {
+            if dist_orig < ctx.gs.min_distance {
+                dist_orig = ctx.gs.min_distance
+            }
+        } else {
+            if dist_orig > -ctx.gs.min_distance {
+                dist_orig = -ctx.gs.min_distance
+            }
+        }
     }
     hinter_program_ttf_move_point(ctx, ctx.zp1, point_idx, dist_orig - dist_cur, true)
     ctx.gs.rp1 = ctx.gs.rp0
@@ -2680,22 +2690,12 @@ hinter_program_ttf_ins_mdrp :: proc(ctx: ^Hinter_Program_Execution_Context) {
 }
 
 hinter_program_ttf_apply_single_width_cut_in :: proc(ctx: ^Hinter_Program_Execution_Context, value: f32) -> f32 {
-    absDiff := abs(value - ctx.gs.single_width_cutin);
+    absDiff := abs(value - ctx.gs.single_width_value);
     if absDiff < ctx.gs.single_width_cutin {
         if value < 0 {
-            return -ctx.gs.single_width_cutin;
+            return -ctx.gs.single_width_value;
         }
-        return ctx.gs.single_width_cutin;
-    }
-    return value;
-}
-
-hinter_program_ttf_apply_min_dist :: proc(ctx: ^Hinter_Program_Execution_Context, value: f32) -> f32 {
-    if abs(value) < ctx.gs.min_distance {
-        if value < 0 {
-            return -ctx.gs.min_distance;
-        }
-        return ctx.gs.min_distance;
+        return ctx.gs.single_width_value;
     }
     return value;
 }
@@ -2705,8 +2705,12 @@ hinter_program_ttf_ins_mirp :: proc(ctx: ^Hinter_Program_Execution_Context) {
     cvt_idx := u32(values[0])
     point_idx := u32(values[1])
 
-    val := hinter_program_ttf_get_cvt(ctx, cvt_idx)
-    cvt_val := hinter_program_ttf_apply_single_width_cut_in(ctx, val)
+    cvt_val: f32
+    if i32(cvt_idx) >= 0 {
+        val := hinter_program_ttf_get_cvt(ctx, cvt_idx)
+        cvt_val = hinter_program_ttf_apply_single_width_cut_in(ctx, val)
+    }
+
 
     rp0_orig := hinter_program_ttf_get_zp(ctx, ctx.zp0.orig_scaled, ctx.gs.rp0)
     rp0_cur := hinter_program_ttf_get_zp(ctx, ctx.zp0.cur, ctx.gs.rp0)
