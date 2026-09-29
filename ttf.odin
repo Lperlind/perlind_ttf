@@ -1980,7 +1980,7 @@ ttf_parse_cpal_table :: proc(ctx: ^Ttf_Read_Context, table: Ttf_Table_Blob, allo
     colors = make([][4]f32, result.num_color_records, allocator)
     for index in 0..< result.num_color_records {
         bgra_colors := ttf_read_t_copy([4]u8, &reader)
-        colors[index] = ([4]f32)(bgra_colors.bgra) / 255
+        colors[index] = [4]f32 { f32(bgra_colors.b), f32(bgra_colors.g), f32(bgra_colors.r), f32(bgra_colors.a) } / 255.0
     }
 
     return palette_indices, colors, ctx.ok
